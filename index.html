@@ -1,69 +1,116 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RAUF BAHERUNI Editor</title><link rel="stylesheet" href="style.css"></head>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RAUF BAHERUNI Screenshot Editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
 <body>
-<header><b>RAUF BAHERUNI</b><button id="save">Download</button></header>
+<header><b>RAUF BAHERUNI</b><label class="open">📷 Screenshot खोलें<input id="file" type="file" accept="image/*"></label></header>
+
 <main>
-<section class="stage"><canvas id="c"></canvas></section>
-<nav id="tabs">
-<button data-p="upload">Photo</button><button data-p="crop">Crop</button><button data-p="rotate">Rotate</button>
-<button data-p="resize">Resize</button><button data-p="filter">Filters</button><button data-p="adjust">Adjust</button>
-<button data-p="text">Text</button><button data-p="sticker">Sticker</button><button data-p="draw">Draw</button>
-<button data-p="background">Background</button><button data-p="enhance">Enhance</button><button data-p="remove">Removal</button>
-</nav>
-<section id="panel"></section>
-<div class="bottom"><button id="undo">Undo</button><button id="compare">Compare</button><button id="reset">Reset</button></div>
+<div class="preview"><canvas id="canvas"></canvas></div>
+
+<div class="buttons">
+<button onclick="rotate(-90)">↶ Rotate</button>
+<button onclick="rotate(90)">↷ Rotate</button>
+<button onclick="flip()">↔ Flip</button>
+<button onclick="resetAll()">Reset</button>
+<button onclick="download()">⬇️ Save</button>
+</div>
+
+<section>
+<h3>Screenshot Edit</h3>
+<label>Brightness <input id="brightness" type="range" min="50" max="150" value="100"></label>
+<label>Contrast <input id="contrast" type="range" min="50" max="150" value="100"></label>
+<label>Saturation <input id="saturation" type="range" min="0" max="200" value="100"></label>
+<label>Blur <input id="blur" type="range" min="0" max="8" value="0" step=".1"></label>
+
+<div class="filters">
+<button onclick="filter('none')">Original</button>
+<button onclick="filter('grayscale(1)')">B&W</button>
+<button onclick="filter('sepia(.5)')">Warm</button>
+<button onclick="filter('saturate(1.5) contrast(1.1)')">Vivid</button>
+</div>
+
+<label>Text जोड़ें <input id="text" type="text" placeholder="अपना टेक्स्ट लिखें"></label>
+<button class="apply" onclick="render()">Text Apply</button>
+</section>
+<p class="note">यह editor JPG, PNG और फोन के screenshots को सीधे browser में edit करता है। कोई upload server नहीं है।</p>
 </main>
+
 <script>
-const c=document.getElementById('c'),x=c.getContext('2d'),img=new Image(); img.src='rauf-baheruni.jpg';
-let S={bright:100,contrast:100,sat:100,blur:0,filter:'',rot:0,flipX:1,flipY:1,text:'',font:36,bg:'#000000',crop:1};
-let history=[], comparing=false, drawing=false, last=null;
-function snapshot(){history.push(JSON.stringify(S));if(history.length>30)history.shift()}
-function fit(){let w=Math.min(img.naturalWidth,1000);c.width=w;c.height=Math.round(img.naturalHeight*w/img.naturalWidth)}
-function draw(original=false){
- x.save();x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,c.width,c.height);x.fillStyle=S.bg;x.fillRect(0,0,c.width,c.height);
- x.translate(c.width/2,c.height/2);x.rotate((original?0:S.rot)*Math.PI/180);x.scale(original?1:S.flipX,original?1:S.flipY);
- x.filter=original?'none':`brightness(${S.bright}%) contrast(${S.contrast}%) saturate(${S.sat}%) blur(${S.blur}px) ${S.filter}`;
- let scale=Math.min(c.width/img.width,c.height/img.height)*(original?1:S.crop);
- x.drawImage(img,-img.width*scale/2,-img.height*scale/2,img.width*scale,img.height*scale);x.restore();
- if(!original&&S.text){x.font=`800 ${S.font}px system-ui`;x.textAlign='center';x.fillStyle='white';x.strokeStyle='rgba(0,0,0,.7)';x.lineWidth=5;x.strokeText(S.text,c.width/2,c.height-45);x.fillText(S.text,c.width/2,c.height-45)}
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+let img=new Image(), angle=0, flipX=1, filterValue='none', textValue='';
+let bright=100, contrast=100, saturation=100, blur=0;
+
+img.onload=()=>{fitCanvas();render()};
+function fitCanvas(){
+ const max=1000, scale=Math.min(1,max/img.naturalWidth);
+ canvas.width=Math.round(img.naturalWidth*scale);
+ canvas.height=Math.round(img.naturalHeight*scale);
 }
-img.onload=()=>{fit();draw();show('upload')}
-function show(p){let h='';
- if(p==='upload')h=`<label>Open screenshot/photo <input id="file" type="file" accept="image/*"></label>`;
- if(p==='crop')h=`<label>Crop / Zoom <input id="crop" type="range" min="1" max="2.5" step=".01" value="${S.crop}"></label>`;
- if(p==='rotate')h=`<button id="left">↶ 90°</button><button id="right">↷ 90°</button><button id="fx">Flip H</button><button id="fy">Flip V</button>`;
- if(p==='resize')h=`<label>Width <input id="rw" type="number" value="${c.width}"></label><label>Height <input id="rh" type="number" value="${c.height}"></label><button id="applySize">Apply</button>`;
- if(p==='filter')h=`<button data-f="">Original</button><button data-f="grayscale(1)">B&W</button><button data-f="sepia(.45)">Warm</button><button data-f="hue-rotate(190deg)">Cool</button><button data-f="contrast(1.18) saturate(1.25)">Vivid</button>`;
- if(p==='adjust')h=`Brightness<input id="bright" type="range" min="40" max="160" value="${S.bright}">Contrast<input id="contrast" type="range" min="40" max="160" value="${S.contrast}">Saturation<input id="sat" type="range" min="0" max="200" value="${S.sat}">Blur<input id="blur" type="range" min="0" max="8" step=".2" value="${S.blur}">`;
- if(p==='text')h=`<input id="txt" placeholder="Type text" value="${S.text}"><label>Size <input id="font" type="range" min="16" max="90" value="${S.font}"></label><button id="textok">Apply Text</button>`;
- if(p==='sticker')h=`<p>Quick stickers</p><button class="emoji">❤️</button><button class="emoji">⭐</button><button class="emoji">🔥</button><button class="emoji">😎</button>`;
- if(p==='draw')h=`<p>Drag your finger/mouse directly on the image to draw.</p><button id="clearDraw">Reload image layer</button>`;
- if(p==='background')h=`<label>Canvas background <input id="bg" type="color" value="${S.bg}"></label>`;
- if(p==='enhance')h=`<button id="auto">Auto Enhance</button><p>Local enhancement improves brightness, contrast and saturation.</p>`;
- if(p==='remove')h=`<p><b>AI Removal:</b> the interface is ready, but true object removal needs an external AI API/backend. This static GitHub Pages build does not send your photo anywhere.</p>`;
- panel.innerHTML=h; bind(p)
+function render(){
+ ctx.save();
+ ctx.setTransform(1,0,0,1,0,0);
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ const rad=angle*Math.PI/180;
+ const sideways=Math.abs(angle%180)===90;
+ ctx.translate(canvas.width/2,canvas.height/2);
+ ctx.rotate(rad);
+ ctx.scale(flipX,1);
+ ctx.filter=`brightness(${bright}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px) ${filterValue}`;
+ let w=sideways?canvas.height:canvas.width, h=sideways?canvas.width:canvas.height;
+ ctx.drawImage(img,-w/2,-h/2,w,h);
+ ctx.restore();
+
+ if(textValue){
+   ctx.save();
+   ctx.font=`bold ${Math.max(20,canvas.width/25)}px Arial`;
+   ctx.textAlign='center';
+   ctx.fillStyle='white';
+   ctx.strokeStyle='black';
+   ctx.lineWidth=5;
+   ctx.strokeText(textValue,canvas.width/2,canvas.height-30);
+   ctx.fillText(textValue,canvas.width/2,canvas.height-30);
+   ctx.restore();
+ }
 }
-function bind(p){
- let e;
- if(e=document.getElementById('file'))e.onchange=q=>{let f=q.target.files[0];if(!f)return;snapshot();img.src=URL.createObjectURL(f)};
- ['crop','bright','contrast','sat','blur','font'].forEach(id=>{e=document.getElementById(id);if(e)e.oninput=()=>{S[id]=+e.value;draw()}});
- if(e=document.getElementById('left'))e.onclick=()=>{snapshot();S.rot-=90;draw()};if(e=document.getElementById('right'))e.onclick=()=>{snapshot();S.rot+=90;draw()};
- if(e=document.getElementById('fx'))e.onclick=()=>{snapshot();S.flipX*=-1;draw()};if(e=document.getElementById('fy'))e.onclick=()=>{snapshot();S.flipY*=-1;draw()};
- document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{snapshot();S.filter=b.dataset.f;draw()});
- if(e=document.getElementById('textok'))e.onclick=()=>{snapshot();S.text=document.getElementById('txt').value;S.font=+document.getElementById('font').value;draw()};
- document.querySelectorAll('.emoji').forEach(b=>b.onclick=()=>{snapshot();S.text=(S.text+' '+b.textContent).trim();draw()});
- if(e=document.getElementById('bg'))e.oninput=()=>{S.bg=e.value;draw()};
- if(e=document.getElementById('auto'))e.onclick=()=>{snapshot();S.bright=108;S.contrast=108;S.sat=112;draw()};
- if(e=document.getElementById('applySize'))e.onclick=()=>{snapshot();let w=+rw.value,h=+rh.value;if(w>50&&h>50&&w<5000&&h<5000){c.width=w;c.height=h;draw()}};
+function rotate(n){angle=(angle+n)%360;render()}
+function flip(){flipX*=-1;render()}
+function filter(v){filterValue=v;render()}
+function resetAll(){
+ angle=0;flipX=1;filterValue='none';textValue='';
+ bright=100;contrast=100;saturation=100;blur=0;
+ brightness.value=100;contrastEl.value=100;saturationEl.value=100;blurEl.value=0;text.value='';
+ render();
 }
-document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>show(b.dataset.p));
-document.getElementById('save').onclick=()=>{draw();let a=document.createElement('a');a.download='RAUF-BAHERUNI-edited.png';a.href=c.toDataURL('image/png');a.click()};
-document.getElementById('compare').onpointerdown=()=>draw(true);document.getElementById('compare').onpointerup=()=>draw();document.getElementById('compare').onpointerleave=()=>draw();
-document.getElementById('reset').onclick=()=>{snapshot();S={bright:100,contrast:100,sat:100,blur:0,filter:'',rot:0,flipX:1,flipY:1,text:'',font:36,bg:'#000000',crop:1};fit();draw()};
-document.getElementById('undo').onclick=()=>{if(history.length){S=JSON.parse(history.pop());draw()}};
-c.addEventListener('pointerdown',e=>{if(panel.innerText.includes('Drag your')){drawing=true;last=pos(e);c.setPointerCapture(e.pointerId)}});
-c.addEventListener('pointermove',e=>{if(!drawing)return;let p=pos(e);x.save();x.filter='none';x.strokeStyle='white';x.lineWidth=5;x.lineCap='round';x.beginPath();x.moveTo(last.x,last.y);x.lineTo(p.x,p.y);x.stroke();x.restore();last=p});
-c.addEventListener('pointerup',()=>drawing=false);
-function pos(e){let r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height}}
-</script></body></html>
+function download(){
+ render();
+ const a=document.createElement('a');
+ a.download='RAUF-BAHERUNI-edited-screenshot.png';
+ a.href=canvas.toDataURL('image/png');
+ a.click();
+}
+file.onchange=e=>{
+ const f=e.target.files[0]; if(!f)return;
+ const reader=new FileReader();
+ reader.onload=ev=>{img=new Image();img.onload=()=>{fitCanvas();render()};img.src=ev.target.result};
+ reader.readAsDataURL(f);
+};
+
+const brightness=document.getElementById('brightness');
+const contrastEl=document.getElementById('contrast');
+const saturationEl=document.getElementById('saturation');
+const blurEl=document.getElementById('blur');
+const text=document.getElementById('text');
+
+brightness.oninput=()=>{bright=+brightness.value;render()};
+contrastEl.oninput=()=>{contrast=+contrastEl.value;render()};
+saturationEl.oninput=()=>{saturation=+saturationEl.value;render()};
+blurEl.oninput=()=>{blur=+blurEl.value;render()};
+text.oninput=()=>{textValue=text.value;render()};
+</script>
+</body>
+</html>
